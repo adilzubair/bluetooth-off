@@ -53,3 +53,7 @@ Follow [docs/APPLE-SHORTCUTS.md](docs/APPLE-SHORTCUTS.md) after the Windows setu
 - `POST /api/v1/bluetooth/off` with no request body
 
 Both endpoints require the private Tailscale HTTPS Host, the Tailscale identity injected by Serve, and `Authorization: Bearer <token>`.
+
+## License
+
+Bluetooth Off is available under the [MIT License](LICENSE).
