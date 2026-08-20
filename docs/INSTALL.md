@@ -29,7 +29,7 @@
    - request Windows Bluetooth permission;
    - create a private Tailscale Serve HTTPS mapping to a loopback-only port;
    - show the Apple Shortcut bearer token once.
-5. If Tailscale opens an admin consent page for HTTPS/Serve, approve it and run the setup step again.
+5. If the wizard reports that one-time Tailscale Serve approval is required, choose **Yes** to open the validated Tailscale activation page. Approve Serve, return to Bluetooth Off, and click **Run secure setup** again.
 
 The HTTPS certificate causes the neutral `bluetooth-off-pc.<tailnet>.ts.net` hostname to appear in public certificate-transparency logs. It does not make the service public.
 
@@ -60,4 +60,3 @@ To remove the preserved data too:
 ```
 
 Tailscale itself is never uninstalled by this script.
-

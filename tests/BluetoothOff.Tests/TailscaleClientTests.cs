@@ -64,5 +64,29 @@ public sealed class TailscaleClientTests
             serveJson,
             "http://127.0.0.1:53002"));
     }
-}
 
+    [TestMethod]
+    public void ServeActivationUriAcceptsOnlyExpectedTailscaleUrl()
+    {
+        const string output = "To enable, visit:\nhttps://login.tailscale.com/f/serve?node=AbCdEfGh12345678\n";
+
+        var found = TailscaleClient.TryGetServeActivationUri(output, out var activationUri);
+
+        Assert.IsTrue(found);
+        Assert.IsNotNull(activationUri);
+        Assert.AreEqual(
+            "https://login.tailscale.com/f/serve?node=AbCdEfGh12345678",
+            activationUri.AbsoluteUri);
+    }
+
+    [TestMethod]
+    [DataRow("https://evil.example/f/serve?node=AbCdEfGh12345678")]
+    [DataRow("http://login.tailscale.com/f/serve?node=AbCdEfGh12345678")]
+    [DataRow("https://login.tailscale.com.evil.example/f/serve?node=AbCdEfGh12345678")]
+    [DataRow("https://login.tailscale.com/f/serve?node=short")]
+    [DataRow("https://login.tailscale.com/f/serve?node=AbCdEfGh12345678&next=evil")]
+    public void ServeActivationUriRejectsUntrustedOrMalformedUrl(string output)
+    {
+        Assert.IsFalse(TailscaleClient.TryGetServeActivationUri(output, out _));
+    }
+}

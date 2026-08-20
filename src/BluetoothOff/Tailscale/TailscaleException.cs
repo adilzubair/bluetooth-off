@@ -1,6 +1,6 @@
 namespace BluetoothOff.Tailscale;
 
-internal sealed class TailscaleException : Exception
+internal class TailscaleException : Exception
 {
     internal TailscaleException(string message)
         : base(message)
@@ -12,4 +12,3 @@ internal sealed class TailscaleException : Exception
     {
     }
 }
-

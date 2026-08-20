@@ -25,7 +25,16 @@ if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {
     throw 'BluetoothOff.exe was not found. Run scripts\publish.ps1 first.'
 }
 
-Get-Process -Name 'BluetoothOff' -ErrorAction SilentlyContinue | Stop-Process -Force
+$runningProcesses = @(Get-Process -Name 'BluetoothOff' -ErrorAction SilentlyContinue)
+if ($runningProcesses.Count -gt 0) {
+    $runningProcesses | Stop-Process -Force
+    foreach ($runningProcess in $runningProcesses) {
+        if (-not $runningProcess.WaitForExit(10000)) {
+            throw "Bluetooth Off process $($runningProcess.Id) did not stop in time."
+        }
+    }
+}
+
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 Copy-Item -LiteralPath $publishedExecutable -Destination (Join-Path $installRoot 'BluetoothOff.exe') -Force
 

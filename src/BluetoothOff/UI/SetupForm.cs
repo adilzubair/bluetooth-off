@@ -174,6 +174,25 @@ internal sealed class SetupForm : Form
             DialogResult = DialogResult.OK;
             Close();
         }
+        catch (TailscaleServeConsentRequiredException exception)
+        {
+            const string status = "Enable Tailscale Serve in the browser, then run secure setup again.";
+            _statusLabel.Text = status;
+
+            var result = MessageBox.Show(
+                string.Concat(
+                    "Tailscale requires one-time approval to enable private Serve access for this tailnet. ",
+                    "Open Tailscale's secure activation page now?\n\n",
+                    "After approving it, return here and click Run secure setup again."),
+                "Enable Tailscale Serve",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (result == DialogResult.Yes)
+            {
+                OpenUrl(exception.ActivationUri.AbsoluteUri);
+            }
+        }
         catch (Exception exception) when (exception is TailscaleException
             or BluetoothOff.Domain.BluetoothControlException
             or IOException
@@ -215,5 +234,24 @@ internal sealed class SetupForm : Form
     {
         return string.Concat("https://", configuration.ExpectedHost);
     }
-}
 
+    private static void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true,
+            });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                "Windows could not open the browser. Open Tailscale from its system tray icon and enable Serve, then retry setup.",
+                "Bluetooth Off",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+    }
+}

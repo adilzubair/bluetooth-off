@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 
 namespace BluetoothOff.Tailscale;
@@ -66,7 +67,8 @@ internal sealed class TailscaleClient
             $"http://127.0.0.1:{loopbackPort}");
         var result = await RunAsync(
             ["serve", "--bg", "--yes", "--https=443", target],
-            cancellationToken);
+            cancellationToken,
+            detectServeConsent: true);
         EnsureSuccess(
             result,
             "Tailscale Serve could not be enabled. Open the Tailscale admin link shown by the CLI, enable HTTPS/Serve, and retry.");
@@ -166,9 +168,58 @@ internal sealed class TailscaleClient
         }
     }
 
+    internal static bool TryGetServeActivationUri(string output, out Uri? activationUri)
+    {
+        const string prefix = "https://login.tailscale.com/f/serve?node=";
+        activationUri = null;
+
+        var start = output.IndexOf(prefix, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var end = start;
+        while (end < output.Length && !char.IsWhiteSpace(output[end]))
+        {
+            end++;
+        }
+
+        var candidate = output[start..end];
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var parsed)
+            || !string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+            || !string.Equals(parsed.IdnHost, "login.tailscale.com", StringComparison.Ordinal)
+            || !parsed.IsDefaultPort
+            || parsed.UserInfo.Length != 0
+            || !string.Equals(parsed.AbsolutePath, "/f/serve", StringComparison.Ordinal)
+            || parsed.Fragment.Length != 0
+            || !parsed.Query.StartsWith("?node=", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var node = parsed.Query.AsSpan("?node=".Length);
+        if (node.Length is < 8 or > 128)
+        {
+            return false;
+        }
+
+        foreach (var character in node)
+        {
+            if (!char.IsAsciiLetterOrDigit(character))
+            {
+                return false;
+            }
+        }
+
+        activationUri = parsed;
+        return true;
+    }
+
     private async Task<ProcessResult> RunAsync(
         IReadOnlyCollection<string> arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool detectServeConsent = false)
     {
         var executablePath = ResolveExecutable();
         if (executablePath is null)
@@ -192,6 +243,34 @@ internal sealed class TailscaleClient
             process.StartInfo.ArgumentList.Add(argument);
         }
 
+        var output = new StringBuilder();
+        var error = new StringBuilder();
+        var outputLock = new object();
+        var errorLock = new object();
+        var serveConsent = new TaskCompletionSource<Uri>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        process.OutputDataReceived += (_, eventArgs) =>
+        {
+            if (eventArgs.Data is null)
+            {
+                return;
+            }
+
+            AppendCapturedLine(output, outputLock, eventArgs.Data);
+            DetectServeConsent(eventArgs.Data, detectServeConsent, serveConsent);
+        };
+        process.ErrorDataReceived += (_, eventArgs) =>
+        {
+            if (eventArgs.Data is null)
+            {
+                return;
+            }
+
+            AppendCapturedLine(error, errorLock, eventArgs.Data);
+            DetectServeConsent(eventArgs.Data, detectServeConsent, serveConsent);
+        };
+
         try
         {
             if (!process.Start())
@@ -199,24 +278,50 @@ internal sealed class TailscaleClient
                 throw new TailscaleException("The Tailscale command could not be started.");
             }
 
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(CommandTimeout);
-            var standardOutputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
-            var standardErrorTask = process.StandardError.ReadToEndAsync(timeout.Token);
 
             try
             {
-                await process.WaitForExitAsync(timeout.Token);
-                var standardOutput = await standardOutputTask;
-                var standardError = await standardErrorTask;
+                var exitTask = process.WaitForExitAsync(timeout.Token);
+                if (detectServeConsent)
+                {
+                    var completed = await Task.WhenAny(exitTask, serveConsent.Task);
+                    if (completed == serveConsent.Task)
+                    {
+                        Terminate(process);
+                        throw new TailscaleServeConsentRequiredException(
+                            await serveConsent.Task);
+                    }
+                }
+
+                await exitTask;
+                process.WaitForExit();
                 return new ProcessResult(
                     process.ExitCode,
-                    Limit(standardOutput),
-                    Limit(standardError));
+                    Snapshot(output, outputLock),
+                    Snapshot(error, errorLock));
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                Terminate(process);
+
+                if (detectServeConsent
+                    && TryGetServeActivationUri(
+                        string.Concat(
+                            Snapshot(output, outputLock),
+                            Environment.NewLine,
+                            Snapshot(error, errorLock)),
+                        out var activationUri)
+                    && activationUri is not null)
+                {
+                    throw new TailscaleServeConsentRequiredException(activationUri);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
                 throw new TailscaleException("The Tailscale command timed out.");
             }
         }
@@ -227,6 +332,67 @@ internal sealed class TailscaleClient
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             throw new TailscaleException("The Tailscale command could not be executed.", exception);
+        }
+    }
+
+    private static void DetectServeConsent(
+        string line,
+        bool enabled,
+        TaskCompletionSource<Uri> completion)
+    {
+        if (enabled
+            && TryGetServeActivationUri(line, out var activationUri)
+            && activationUri is not null)
+        {
+            completion.TrySetResult(activationUri);
+        }
+    }
+
+    private static void AppendCapturedLine(
+        StringBuilder builder,
+        object syncRoot,
+        string line)
+    {
+        lock (syncRoot)
+        {
+            if (builder.Length >= MaximumCapturedCharacters)
+            {
+                return;
+            }
+
+            var remaining = MaximumCapturedCharacters - builder.Length;
+            var characterCount = Math.Min(line.Length, remaining);
+            builder.Append(line.AsSpan(0, characterCount));
+            if (builder.Length < MaximumCapturedCharacters)
+            {
+                builder.AppendLine();
+            }
+        }
+    }
+
+    private static string Snapshot(StringBuilder builder, object syncRoot)
+    {
+        lock (syncRoot)
+        {
+            return builder.ToString();
+        }
+    }
+
+    private static void Terminate(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+
+            process.WaitForExit(5_000);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            // The process exited between the state check and termination.
         }
     }
 
@@ -290,13 +456,6 @@ internal sealed class TailscaleClient
                 .Any(item => ContainsValue(item, expected)),
             _ => false,
         };
-    }
-
-    private static string Limit(string value)
-    {
-        return value.Length <= MaximumCapturedCharacters
-            ? value
-            : value[..MaximumCapturedCharacters];
     }
 
     private static void EnsureSuccess(ProcessResult result, string safeMessage)
