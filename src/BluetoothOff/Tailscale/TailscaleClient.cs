@@ -45,7 +45,7 @@ internal sealed class TailscaleClient
     internal async Task EnsureNoExistingExposureAsync(CancellationToken cancellationToken)
     {
         var funnel = await RunAsync(["funnel", "status", "--json"], cancellationToken);
-        if (funnel.ExitCode == 0 && HasConfiguration(funnel.StandardOutput))
+        if (funnel.ExitCode == 0 && HasFunnelConfiguration(funnel.StandardOutput))
         {
             throw new TailscaleException(
                 "Tailscale Funnel is configured on this PC. Remove it before setting up Bluetooth Off.");
@@ -77,7 +77,7 @@ internal sealed class TailscaleClient
     internal async Task VerifyPrivateServeAsync(int loopbackPort, CancellationToken cancellationToken)
     {
         var funnel = await RunAsync(["funnel", "status", "--json"], cancellationToken);
-        if (funnel.ExitCode == 0 && HasConfiguration(funnel.StandardOutput))
+        if (funnel.ExitCode == 0 && HasFunnelConfiguration(funnel.StandardOutput))
         {
             throw new TailscaleException("Tailscale Funnel must remain disabled.");
         }
@@ -148,6 +148,40 @@ internal sealed class TailscaleClient
                 JsonValueKind.Null => false,
                 _ => true,
             };
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
+    internal static bool HasFunnelConfiguration(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return true;
+            }
+
+            if (!document.RootElement.TryGetProperty("AllowFunnel", out var allowFunnel))
+            {
+                return false;
+            }
+
+            if (allowFunnel.ValueKind != JsonValueKind.Object)
+            {
+                return allowFunnel.ValueKind != JsonValueKind.Null;
+            }
+
+            return allowFunnel.EnumerateObject().Any(static property =>
+                property.Value.ValueKind != JsonValueKind.False);
         }
         catch (JsonException)
         {

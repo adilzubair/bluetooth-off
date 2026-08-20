@@ -149,16 +149,21 @@ internal sealed class SetupForm : Form
                 credential.Sha256Hash);
 
             _statusLabel.Text = "Creating and verifying private Tailscale HTTPS access…";
-            await _tailscale.ConfigurePrivateServeAsync(port, CancellationToken.None);
-            await _tailscale.VerifyPrivateServeAsync(port, CancellationToken.None);
-
+            var serveConfigured = false;
             try
             {
+                await _tailscale.ConfigurePrivateServeAsync(port, CancellationToken.None);
+                serveConfigured = true;
+                await _tailscale.VerifyPrivateServeAsync(port, CancellationToken.None);
                 await _configurationStore.SaveAsync(configuration, CancellationToken.None);
             }
             catch
             {
-                await _tailscale.DisableOwnedServeAsync(port, CancellationToken.None);
+                if (serveConfigured)
+                {
+                    await _tailscale.DisableOwnedServeAsync(port, CancellationToken.None);
+                }
+
                 throw;
             }
 

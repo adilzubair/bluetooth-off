@@ -43,6 +43,41 @@ public sealed class TailscaleClientTests
     }
 
     [TestMethod]
+    public void FunnelDetectionDoesNotMistakePrivateServeForPublicExposure()
+    {
+        const string privateServe = """
+            {
+              "TCP": { "443": { "HTTPS": true } },
+              "Web": {
+                "bluetooth-off-pc.example.ts.net:443": {
+                  "Handlers": {
+                    "/": { "Proxy": "http://127.0.0.1:53001" }
+                  }
+                }
+              }
+            }
+            """;
+
+        Assert.IsFalse(TailscaleClient.HasFunnelConfiguration(privateServe));
+    }
+
+    [TestMethod]
+    public void FunnelDetectionRequiresExplicitlyAllowedPublicEndpoint()
+    {
+        const string publicFunnel = """
+            {
+              "AllowFunnel": {
+                "bluetooth-off-pc.example.ts.net:443": true
+              }
+            }
+            """;
+
+        Assert.IsTrue(TailscaleClient.HasFunnelConfiguration(publicFunnel));
+        Assert.IsFalse(TailscaleClient.HasFunnelConfiguration("{}"));
+        Assert.IsTrue(TailscaleClient.HasFunnelConfiguration("not-json"));
+    }
+
+    [TestMethod]
     public void JsonContainsValueFindsOnlyExactLoopbackTarget()
     {
         const string serveJson = """
