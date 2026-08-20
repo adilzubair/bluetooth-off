@@ -54,9 +54,9 @@ Register-ScheduledTask `
     -Description 'Runs the private Bluetooth Off tray application after this user signs in.' `
     -Force | Out-Null
 
-Start-Process -FilePath $installedExecutable -WorkingDirectory $installRoot -WindowStyle Hidden
+# First launch is intentionally visible because Windows and Tailscale setup require user consent.
+Start-Process -FilePath $installedExecutable -WorkingDirectory $installRoot -WindowStyle Normal
 
 Write-Host "Installed Bluetooth Off to $installRoot"
 Write-Host 'A limited per-user scheduled task will start it after sign-in.'
 Write-Host 'No Windows Firewall rule was created.'
-

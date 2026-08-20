@@ -52,6 +52,21 @@ public sealed class ApiApplicationTests
     }
 
     [TestMethod]
+    public async Task StatusRejectsDuplicateAuthorizationHeaders()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        using var request = ApiFixture.CreateRequest(HttpMethod.Get, "/api/v1/status");
+        request.Headers.Remove("Authorization");
+        request.Headers.TryAddWithoutValidation(
+            "Authorization",
+            ["Bearer valid-test-token", "Bearer valid-test-token"]);
+
+        using var response = await fixture.Client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task StatusReturnsCurrentStateWithoutChangingRadio()
     {
         var radio = new FakeController { State = BluetoothState.On };
@@ -100,6 +115,41 @@ public sealed class ApiApplicationTests
     }
 
     [TestMethod]
+    public async Task OffRateLimitRejectsSixthRequestInWindow()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        HttpResponseMessage? finalResponse = null;
+
+        try
+        {
+            for (var requestNumber = 0; requestNumber < 6; requestNumber++)
+            {
+                using var request = ApiFixture.CreateRequest(HttpMethod.Post, "/api/v1/bluetooth/off");
+                finalResponse?.Dispose();
+                finalResponse = await fixture.Client.SendAsync(request);
+            }
+
+            Assert.IsNotNull(finalResponse);
+            Assert.AreEqual(HttpStatusCode.TooManyRequests, finalResponse.StatusCode);
+        }
+        finally
+        {
+            finalResponse?.Dispose();
+        }
+    }
+
+    [TestMethod]
+    public async Task UnsupportedMethodReturnsMethodNotAllowed()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        using var request = ApiFixture.CreateRequest(HttpMethod.Put, "/api/v1/status");
+
+        using var response = await fixture.Client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task BluetoothFailuresReturnSanitizedServiceUnavailable()
     {
         var radio = new FakeController
@@ -118,6 +168,24 @@ public sealed class ApiApplicationTests
         StringAssert.Contains(text, "radio_unavailable");
         Assert.IsFalse(text.Contains("sensitive internal detail", StringComparison.Ordinal));
         Assert.IsTrue(response.Headers.Contains("X-Correlation-ID"));
+    }
+
+    [TestMethod]
+    public async Task UnexpectedFailuresReturnSanitizedInternalError()
+    {
+        var radio = new FakeController
+        {
+            Failure = new InvalidOperationException("secret exception detail"),
+        };
+        await using var fixture = await ApiFixture.StartAsync(radio);
+        using var request = ApiFixture.CreateRequest(HttpMethod.Get, "/api/v1/status");
+
+        using var response = await fixture.Client.SendAsync(request);
+        var text = await response.Content.ReadAsStringAsync();
+
+        Assert.AreEqual(HttpStatusCode.InternalServerError, response.StatusCode);
+        StringAssert.Contains(text, "internal_error");
+        Assert.IsFalse(text.Contains("secret exception detail", StringComparison.Ordinal));
     }
 
     private sealed class ApiFixture : IAsyncDisposable
@@ -166,7 +234,7 @@ public sealed class ApiApplicationTests
 
     private sealed class FakeController : IBluetoothRadioController
     {
-        internal BluetoothControlException? Failure { get; init; }
+        internal Exception? Failure { get; init; }
 
         internal int OffCallCount { get; private set; }
 

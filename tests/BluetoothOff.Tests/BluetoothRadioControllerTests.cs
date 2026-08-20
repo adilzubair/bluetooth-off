@@ -111,6 +111,38 @@ public sealed class BluetoothRadioControllerTests
         Assert.AreEqual(BluetoothFailureCode.StateNotConfirmed, exception.Code);
     }
 
+    [TestMethod]
+    public async Task ConcurrentOffRequestsAreSerializedAndCoalesced()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var device = new FakeRadioDevice
+        {
+            State = BluetoothState.On,
+            OnSetOffAsync = async radio =>
+            {
+                entered.SetResult();
+                await release.Task;
+                radio.State = BluetoothState.Off;
+            },
+        };
+        var platform = new FakeRadioPlatform { Radio = device };
+        using var controller = CreateController(platform);
+        await controller.AuthorizeAsync(CancellationToken.None);
+
+        var first = controller.TurnOffAsync(CancellationToken.None);
+        await entered.Task;
+        var second = controller.TurnOffAsync(CancellationToken.None);
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        Assert.AreEqual(1, device.SetOffCallCount);
+        release.SetResult();
+        var results = await Task.WhenAll(first, second);
+        Assert.IsTrue(results[0].Changed);
+        Assert.IsFalse(results[1].Changed);
+        Assert.AreEqual(1, device.SetOffCallCount);
+    }
+
     private static BluetoothRadioController CreateController(FakeRadioPlatform platform)
     {
         return new BluetoothRadioController(
@@ -142,16 +174,23 @@ public sealed class BluetoothRadioControllerTests
     {
         internal Action<FakeRadioDevice>? OnSetOff { get; init; }
 
+        internal Func<FakeRadioDevice, Task>? OnSetOffAsync { get; init; }
+
         internal int SetOffCallCount { get; private set; }
 
         public BluetoothState State { get; set; } = BluetoothState.On;
 
-        public Task<RadioSetDecision> SetOffAsync(CancellationToken cancellationToken)
+        public async Task<RadioSetDecision> SetOffAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SetOffCallCount++;
             OnSetOff?.Invoke(this);
-            return Task.FromResult(RadioSetDecision.Allowed);
+            if (OnSetOffAsync is not null)
+            {
+                await OnSetOffAsync(this);
+            }
+
+            return RadioSetDecision.Allowed;
         }
     }
 }
