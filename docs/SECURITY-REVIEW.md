@@ -57,6 +57,7 @@ One release-level limitation remains: v1.0.0 is not Authenticode-signed. GitHub 
 - CI actions are pinned to immutable commit SHAs with minimal permissions.
 - CodeQL runs on pushes, pull requests, and weekly; Dependabot covers NuGet and GitHub Actions.
 - Tagged releases are rebuilt and tested on GitHub-hosted Windows runners, receive SHA-256 checksums, and are submitted for GitHub build-provenance attestation.
+- Repository policy makes releases created after v1.0.0 immutable. The v1.0.0 release predates that policy and is instead protected by verified checksums plus EXE and ZIP provenance attestations.
 
 ## Residual risks and limitations
 

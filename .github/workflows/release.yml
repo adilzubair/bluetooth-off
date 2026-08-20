@@ -60,4 +60,6 @@ jobs:
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           $notes | Set-Content -LiteralPath $notesPath -Encoding utf8NoBOM
           $assets = @(Get-ChildItem -LiteralPath artifacts/release -File | ForEach-Object FullName)
-          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Bluetooth Off $env:GITHUB_REF_NAME" --notes-file $notesPath
+          gh release create $env:GITHUB_REF_NAME --draft --verify-tag --title "Bluetooth Off $env:GITHUB_REF_NAME" --notes-file $notesPath
+          gh release upload $env:GITHUB_REF_NAME $assets
+          gh release edit $env:GITHUB_REF_NAME --draft=false
