@@ -10,6 +10,11 @@
     <NuGetAuditMode>all</NuGetAuditMode>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <VersionPrefix>1.0.0</VersionPrefix>
+    <Product>Bluetooth Off</Product>
+    <Description>Turn off a Windows PC's Bluetooth radio from an authenticated iPhone Shortcut over private Tailscale Serve.</Description>
+    <RepositoryUrl>https://github.com/adilzubair/bluetooth-off</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>
-

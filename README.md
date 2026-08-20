@@ -2,6 +2,8 @@
 
 Bluetooth Off is a small Windows tray application that lets an authenticated Apple Shortcut read the PC's Bluetooth state and turn Bluetooth off through a private Tailscale connection.
 
+[Download the latest Windows x64 release](https://github.com/adilzubair/bluetooth-off/releases/latest/download/BluetoothOff-win-x64.exe)
+
 The application is intentionally narrow: it does not expose Bluetooth-on, arbitrary device control, PowerShell, shell commands, or public internet access.
 
 ## What it provides
@@ -21,7 +23,17 @@ Generated tokens, machine configuration, logs, and publish artifacts must never 
 
 See [the threat model](docs/THREAT-MODEL.md) for the security boundary and residual risks.
 
-## Build and install
+## Download and install
+
+Requirements: Windows 10 build 19041 or newer on x64, plus Tailscale on both the PC and iPhone.
+
+- For portable use, download `BluetoothOff-win-x64.exe` from the latest release and run it directly.
+- For automatic startup, download `BluetoothOff-win-x64.zip`, extract it, and run `Install.ps1` from PowerShell. This installs only for the current user and does not require administrator privileges.
+- The release is currently not Authenticode-signed, so Windows SmartScreen may warn on first launch. Verify `SHA256SUMS.txt` and the GitHub build attestation before running the file.
+
+The first-run wizard requests Windows Bluetooth permission and configures tailnet-private Tailscale Serve. It never enables public Tailscale Funnel.
+
+## Build from source
 
 Install the .NET 10 SDK, then run:
 

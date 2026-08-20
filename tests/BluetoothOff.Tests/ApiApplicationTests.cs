@@ -67,6 +67,47 @@ public sealed class ApiApplicationTests
     }
 
     [TestMethod]
+    public async Task StatusRejectsDuplicateTailscaleIdentityHeaders()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        using var request = ApiFixture.CreateRequest(HttpMethod.Get, "/api/v1/status");
+        request.Headers.Remove(RequestAuthenticator.TailscaleLoginHeader);
+        request.Headers.TryAddWithoutValidation(
+            RequestAuthenticator.TailscaleLoginHeader,
+            [ExpectedLogin, ExpectedLogin]);
+
+        using var response = await fixture.Client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task StatusRejectsTokenInUrlWithoutAuthorizationHeader()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        using var request = ApiFixture.CreateRequest(
+            HttpMethod.Get,
+            string.Concat("/api/v1/status?token=", Token));
+        request.Headers.Authorization = null;
+
+        using var response = await fixture.Client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task StatusRejectsUnexpectedHostPort()
+    {
+        await using var fixture = await ApiFixture.StartAsync();
+        using var request = ApiFixture.CreateRequest(HttpMethod.Get, "/api/v1/status");
+        request.Headers.Host = string.Concat(ExpectedHost, ":8443");
+
+        using var response = await fixture.Client.SendAsync(request);
+
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
     public async Task StatusReturnsCurrentStateWithoutChangingRadio()
     {
         var radio = new FakeController { State = BluetoothState.On };

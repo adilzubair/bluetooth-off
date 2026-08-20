@@ -43,6 +43,6 @@ Both Shortcuts can be added to the Home Screen, a widget, or invoked by Siri. Ke
 - Shortcut syncing may copy the token to other devices signed into the same Apple account.
 - If the phone or Shortcut may have been exposed, use **Rotate phone token** from the Windows tray menu and update both Shortcuts.
 - The old token stops working immediately after rotation.
+- Bluetooth Off clears the Windows clipboard when the pairing window closes if the clipboard still contains the token. Windows clipboard history or third-party clipboard tools may retain earlier copies, so clear their history after pairing if enabled.
 
 Apple documents POST API requests in [Request your first API in Shortcuts](https://support.apple.com/guide/shortcuts/apd58d46713f/ios). Tailscale documents its native Connect and Get Status actions in [macOS and iOS shortcuts](https://tailscale.com/docs/features/mac-ios-shortcuts).
-

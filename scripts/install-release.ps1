@@ -1,17 +1,15 @@
 [CmdletBinding()]
-param(
-    [switch] $SkipPublish
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 
-$projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$publishRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts\publish'))
+$packageRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
+$packageExecutable = Join-Path $packageRoot 'BluetoothOff.exe'
 $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
 $installRoot = [System.IO.Path]::GetFullPath((Join-Path $localAppData 'Programs\BluetoothOff'))
 $expectedInstallRoot = [System.IO.Path]::GetFullPath((Join-Path $localAppData 'Programs\BluetoothOff'))
-$taskName = 'BluetoothOff'
 $installedExecutable = Join-Path $installRoot 'BluetoothOff.exe'
+$taskName = 'BluetoothOff'
 $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 
@@ -19,13 +17,8 @@ if (-not $installRoot.Equals($expectedInstallRoot, [System.StringComparison]::Or
     throw 'Resolved install directory is not the expected per-user Bluetooth Off directory.'
 }
 
-if (-not $SkipPublish) {
-    & (Join-Path $PSScriptRoot 'publish.ps1')
-}
-
-$publishedExecutable = Join-Path $publishRoot 'BluetoothOff.exe'
-if (-not (Test-Path -LiteralPath $publishedExecutable -PathType Leaf)) {
-    throw 'BluetoothOff.exe was not found. Run scripts\publish.ps1 first.'
+if (-not (Test-Path -LiteralPath $packageExecutable -PathType Leaf)) {
+    throw 'BluetoothOff.exe must be in the same directory as Install.ps1.'
 }
 
 $existingTasks = @(Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)
@@ -64,6 +57,7 @@ $runningProcesses = @(Get-Process -Name 'BluetoothOff' -ErrorAction SilentlyCont
         $false
     }
 })
+
 if ($runningProcesses.Count -gt 0) {
     $runningProcesses | Stop-Process -Force
     foreach ($runningProcess in $runningProcesses) {
@@ -74,7 +68,7 @@ if ($runningProcesses.Count -gt 0) {
 }
 
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
-Copy-Item -LiteralPath $publishedExecutable -Destination (Join-Path $installRoot 'BluetoothOff.exe') -Force
+Copy-Item -LiteralPath $packageExecutable -Destination $installedExecutable -Force
 
 $action = New-ScheduledTaskAction -Execute $installedExecutable -WorkingDirectory $installRoot
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentIdentity
@@ -99,7 +93,6 @@ Register-ScheduledTask `
     -Description 'Runs the private Bluetooth Off tray application after this user signs in.' `
     -Force | Out-Null
 
-# First launch is intentionally visible because Windows and Tailscale setup require user consent.
 Start-Process -FilePath $installedExecutable -WorkingDirectory $installRoot -WindowStyle Normal
 
 Write-Host "Installed Bluetooth Off to $installRoot"

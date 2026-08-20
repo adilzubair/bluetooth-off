@@ -72,6 +72,7 @@ internal sealed class PairingDetailsForm : Form
         };
 
         AcceptButton = close;
+        FormClosed += (_, _) => ClearClipboardIfTokenMatches(credential.Plaintext);
         Controls.AddRange([
             title,
             warning,
@@ -123,5 +124,20 @@ internal sealed class PairingDetailsForm : Form
         };
         return button;
     }
-}
 
+    private static void ClearClipboardIfTokenMatches(string token)
+    {
+        try
+        {
+            if (Clipboard.ContainsText()
+                && string.Equals(Clipboard.GetText(), token, StringComparison.Ordinal))
+            {
+                Clipboard.Clear();
+            }
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            // Clipboard cleanup is best effort and must not block closing the pairing window.
+        }
+    }
+}

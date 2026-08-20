@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  release-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pinned .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Build tested release assets
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          .\scripts\package-release.ps1 -Version $version
+
+      - name: Attest executable and archive provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/release/BluetoothOff-win-x64.exe
+            artifacts/release/BluetoothOff-win-x64.zip
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @'
+          Bluetooth Off is a private iPhone-to-Windows Bluetooth-off controller for Windows x64.
+
+          Download `BluetoothOff-win-x64.exe` to run the portable app directly, or use the ZIP for the optional per-user startup installer.
+
+          **Important:** this release is not Authenticode-signed, so Windows SmartScreen may warn on first launch. Verify `SHA256SUMS.txt` and the GitHub build attestation before running it.
+
+          Tailscale is required on both Windows and iPhone. Funnel is intentionally unsupported; the app uses tailnet-private Tailscale Serve.
+          '@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $notes | Set-Content -LiteralPath $notesPath -Encoding utf8NoBOM
+          $assets = @(Get-ChildItem -LiteralPath artifacts/release -File | ForEach-Object FullName)
+          gh release create $env:GITHUB_REF_NAME $assets --verify-tag --title "Bluetooth Off $env:GITHUB_REF_NAME" --notes-file $notesPath

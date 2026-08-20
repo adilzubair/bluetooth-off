@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param()
+param(
+    [ValidatePattern('^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$')]
+    [string] $Version = '1.0.0'
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -45,6 +48,7 @@ try {
         '--self-contained' 'true' `
         '--no-restore' `
         '--output' $publishRoot `
+        "-p:Version=$Version" `
         '-p:PublishSingleFile=true' `
         '-p:PublishTrimmed=false'
     if ($LASTEXITCODE -ne 0) {
@@ -59,5 +63,4 @@ if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw 'Publish completed without producing BluetoothOff.exe.'
 }
 
-Write-Host "Published Bluetooth Off to $publishRoot"
-
+Write-Host "Published Bluetooth Off $Version to $publishRoot"

@@ -12,6 +12,7 @@ $dataRoot = [System.IO.Path]::GetFullPath((Join-Path $localAppData 'BluetoothOff
 $expectedDataRoot = [System.IO.Path]::GetFullPath((Join-Path $localAppData 'BluetoothOff'))
 $configurationFile = Join-Path $dataRoot 'config.json'
 $taskName = 'BluetoothOff'
+$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 
 if (-not $installRoot.Equals($expectedInstallRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw 'Resolved install directory is not the expected Bluetooth Off directory.'
@@ -68,11 +69,43 @@ function Get-ProxyValues {
     return $values
 }
 
-Get-Process -Name 'BluetoothOff' -ErrorAction SilentlyContinue | Stop-Process -Force
+$installedExecutable = Join-Path $installRoot 'BluetoothOff.exe'
+$runningProcesses = @(Get-Process -Name 'BluetoothOff' -ErrorAction SilentlyContinue | Where-Object {
+    try {
+        [System.IO.Path]::GetFullPath($_.Path).Equals(
+            $installedExecutable,
+            [System.StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        $false
+    }
+})
+$runningProcesses | Stop-Process -Force
 
-$task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($null -ne $task -and $PSCmdlet.ShouldProcess($taskName, 'Remove scheduled task')) {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+$tasks = @(Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)
+if ($tasks.Count -eq 1) {
+    $task = $tasks[0]
+    try {
+        $taskPrincipalSid = ([System.Security.Principal.NTAccount] $task.Principal.UserId).Translate(
+            [System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        $taskPrincipalSid = $null
+    }
+
+    $ownedTask = $task.TaskPath -eq '\' -and
+        $task.Actions.Count -eq 1 -and
+        [System.IO.Path]::GetFullPath($task.Actions[0].Execute.Trim('"')).Equals(
+            $installedExecutable,
+            [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::IsNullOrWhiteSpace($task.Actions[0].Arguments) -and
+        $taskPrincipalSid -eq $currentSid
+
+    if ($ownedTask -and $PSCmdlet.ShouldProcess($taskName, 'Remove scheduled task')) {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+    } elseif (-not $ownedTask) {
+        Write-Warning 'A scheduled task named BluetoothOff is not owned by this application and was preserved.'
+    }
+} elseif ($tasks.Count -gt 1) {
+    Write-Warning 'Multiple scheduled tasks named BluetoothOff were found and preserved.'
 }
 
 if (Test-Path -LiteralPath $configurationFile -PathType Leaf) {
