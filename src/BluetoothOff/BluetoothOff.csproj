@@ -6,9 +6,10 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>embedded</DebugType>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>BluetoothOff</AssemblyName>
     <RootNamespace>BluetoothOff</RootNamespace>
   </PropertyGroup>
 </Project>
-
